@@ -20,10 +20,19 @@ DEFAULT_TIMEOUT = 60
 
 
 def get_env(name: str, default: str | None = None) -> str | None:
-    value = os.getenv(name, default)
+    """Read from OS env first, then Streamlit secrets (Cloud deploy)."""
+    value = os.getenv(name)
+    if not value:
+        try:
+            import streamlit as st
+
+            if hasattr(st, "secrets") and name in st.secrets:
+                value = st.secrets[name]
+        except Exception:
+            value = None
     if value is None:
-        return None
-    stripped = value.strip()
+        return default
+    stripped = str(value).strip()
     return stripped or default
 
 
