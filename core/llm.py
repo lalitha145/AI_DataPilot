@@ -63,7 +63,7 @@ Rules:
 - You do NOT calculate numbers. You only describe how to compute them.
 - Use only tables and columns listed in the catalog. Never invent names.
 - Prefer table.column references.
-- For attendance rate, use present_days with ratio_over = working_days and aggregation avg or sum.
+- For a rate or percentage-style metric (e.g. attendance rate, completion rate, pass rate), find two numeric columns where one represents an achieved/present count and the other represents a total/possible count, and compute their ratio (aggregation avg or sum, with ratio_over set to the total column). Infer this from whatever columns exist in the catalog — never assume specific column names.
 - For percentages of a category, use aggregation count, a matching filter, and grouping if useful.
 - Join tables when the question needs columns from more than one file.
 - Set visualization.needed true only when a chart helps (comparisons, rankings, trends, distributions). Simple totals should use needed=false and type=none.

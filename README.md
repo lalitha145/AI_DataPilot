@@ -2,58 +2,58 @@
 
 **Upload your data. Ask questions. Get insights.**
 
-A small, production-minded prototype for a Darwinbox Forward Deployed Engineer take-home: upload multiple CSV/Excel files, ask analytical questions in plain English, and get answers computed from the data—not guessed by a model.
+Live demo: **[https://ai-datapilot.streamlit.app/](https://ai-datapilot.streamlit.app/)**
 
-## Problem statement
+DataPilot lets you upload CSV/Excel files and ask analytical questions in plain English. Answers are **computed from your data with DuckDB** — the LLM only plans the query, it does not invent numbers.
 
-Business users can upload related spreadsheets (employees, attendance, performance, sales, and so on) and want trustworthy answers to questions like “which department has the highest average performance?” Generic chat-with-CSV tools often let the LLM invent numbers. DataPilot treats the model as a planner and DuckDB as the source of truth.
+---
+
+## Try it now
+
+1. Open the live app: [https://ai-datapilot.streamlit.app/](https://ai-datapilot.streamlit.app/)
+2. Upload one or more CSV / Excel files (or use the sample files from `sample_data/`)
+3. Ask a question or click an example
+4. Review the answer, chart (if useful), result table, and analysis details
+
+---
+
+## What it does
+
+| Step | What happens |
+|------|----------------|
+| 1. Upload | Files become in-memory DuckDB tables; schema is extracted |
+| 2. Ask | You type a business question in plain English |
+| 3. Plan | The LLM returns a structured `AnalysisPlan` (not SQL, not numbers) |
+| 4. Validate | Tables, columns, joins, and aggregations are checked |
+| 5. Compute | Python builds SQL → DuckDB runs it (source of truth) |
+| 6. Explain | A short answer + optional chart + provenance |
+
+**Rule:** LLM proposes → code validates → DuckDB computes → UI explains.
+
+---
 
 ## Key features
 
 - Multi-file CSV / Excel upload in one session
-- Schema extraction (types, samples, null counts) without sending full datasets to the model
-- Structured `AnalysisPlan` from the LLM (Pydantic, closed enums)
-- Plan validation: tables, columns, joins, aggregations
-- Deterministic SQL generation and read-only DuckDB execution
-- Cross-file joins when questions span datasets
-- Lightweight semantic column matching (`region` → `sales_region`) without renaming originals
+- Schema catalog for the model (types, samples) — full data stays local
+- Structured planning with Pydantic (`AnalysisPlan`)
+- Deterministic SQL + read-only DuckDB execution
+- Cross-file joins when a question spans datasets
 - Ambiguity prompts instead of silent guessing
-- Question-driven Plotly charts (only when they help)
-- Lightweight provenance: files, columns, calculation, rows analyzed
+- Out-of-scope guardrails for chit-chat / unrelated questions
+- Live step progress while analysis runs
+- Question-driven Plotly charts
+- Provenance: files used, columns, calculation, rows analyzed
+
+---
 
 ## Architecture
 
 ```
-                User
-                 |
-                 v
-          Streamlit UI
-                 |
-                 v
-          User Question
-                 |
-                 v
-         LLM / OpenRouter
-                 |
-                 v
-        Structured AnalysisPlan
-                 |
-                 v
-        Plan Validation Layer
-                 |
-                 v
-      Deterministic SQL Builder
-                 |
-                 v
-              DuckDB
-                 |
-         +-------+-------+
-         |               |
-         v               v
-   Visualization     Explanation
-                 |
-                 v
-            Final Answer
+User → Streamlit UI → Question
+         → LLM planner (OpenRouter) → AnalysisPlan
+         → Validators → SQL builder → DuckDB
+         → Chart + explanation → Answer
 ```
 
 ```mermaid
@@ -72,66 +72,19 @@ flowchart TD
     K --> L
 ```
 
-## Data flow
-
-1. Files are parsed with pandas and registered as in-memory DuckDB tables.
-2. Only catalog metadata (and small samples) go to the LLM.
-3. The LLM returns an `AnalysisPlan`, not SQL and not numbers.
-4. Validators resolve columns and reject unknown tables, impossible joins, and illegal aggregations.
-5. Python builds a `SELECT` statement. DuckDB computes the result.
-6. The UI shows a short explanation, an optional chart, a result table, and analysis details.
-
-## Why DuckDB
-
-DuckDB runs analytical SQL on pandas frames in-process. Aggregations, joins, filters, and sorts are deterministic, fast, and independent of model temperature. That is the right engine for “numbers the business can trust.”
-
-## Why the LLM does not calculate answers
-
-The model is good at *semantic* work: intent, relevant columns, likely joins, chart choice, and phrasing. It is a poor source of truth for totals and averages. DataPilot’s rule is:
-
-**LLM proposes. Code validates. DuckDB computes. UI explains.**
-
-Explanations are generated from a compact result preview so the model cannot “remember” a different number than the query returned.
-
-## Cross-file analysis approach
-
-Joins are suggested by the model and checked by the backend: both tables must exist, join columns must exist, and types must be compatible. If the model omits joins but multiple tables are required, DataPilot infers a lightweight same-name key (typically `employee_id`). There is no graph database—just enough relationship detection to answer HR-style questions across files.
-
-## Delta solutioning
-
-These are the differentiators versus “paste a CSV into ChatGPT”:
-
-1. Deterministic computation with DuckDB
-2. Schema-aware query planning
-3. Cross-file analysis
-4. Lightweight semantic column matching
-5. Ambiguity detection
-6. Scope guardrails
-7. Result provenance
-8. Question-driven visualization
-
-### Scope guardrails
-
-A question is answered only if its vocabulary appears in the uploaded schema. `detect_out_of_scope` compares the question's words against table names, file names, column names and the distinct values of small categorical columns. If nothing matches, DataPilot says what the files actually cover instead of inventing an answer. The planner prompt carries the same rule through an `out_of_scope` flag, so general-knowledge and chit-chat questions are rejected on both the deterministic and the model side.
-
-### Ambiguity detection
-
-`detect_ambiguity` maps each meaningful word in the question to the numeric columns it could mean. When a single word (for example "days" against `working_days`, `present_days` and `leave_days`) matches two or more measures, DataPilot asks which one to use and lists the candidates by file name rather than guessing. Questions that spell out a full column name, such as "average performance score", skip the check.
-
-### Numeric precision
-
-Every aggregate is wrapped in `ROUND(CAST(... AS DOUBLE), 2)` inside DuckDB, and float columns in the result frame are rounded to the same two decimals. The answer text, the table and the chart therefore always show the identical value, and the explanation model is told the numbers are already rounded.
+---
 
 ## Tech stack
 
 - Python 3.11+
 - Streamlit
 - Pandas, OpenPyXL, DuckDB
-- Plotly
-- Pydantic
-- OpenRouter (`deepseek/deepseek-v4-flash-0731:free` by default)
+- Plotly, Pydantic
+- OpenRouter (default: `deepseek/deepseek-v4-flash-0731:free`)
 
-## Setup
+---
+
+## Local setup
 
 ```bash
 python -m venv .venv
@@ -143,33 +96,35 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Environment variables
+### Environment variables
 
-Copy `.env.example` to `.env` and set your key:
+Copy `.env.example` to `.env` (or create `.env`) and set:
 
 ```bash
 OPENROUTER_API_KEY=your_openrouter_api_key_here
 MODEL=deepseek/deepseek-v4-flash-0731:free
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+APP_TITLE=DataPilot
+MAX_RESULT_ROWS=50
+LLM_TIMEOUT_SECONDS=60
+AI_NARRATION=true
 ```
 
-Never commit `.env`. Secrets are read at runtime only.
+Never commit `.env`. On Streamlit Cloud, set the same keys under **Manage app → Settings → Secrets** (TOML format).
 
-## How to run
-
-From the project root:
+### Run
 
 ```bash
 streamlit run app.py
 ```
 
-Upload the files in `sample_data/` (or your own), then ask a question or click an example.
-
-Regenerate sample data if needed:
+Sample data: `sample_data/`. Regenerate with:
 
 ```bash
 python scripts/generate_sample_data.py
 ```
+
+---
 
 ## Example questions
 
@@ -181,26 +136,68 @@ python scripts/generate_sample_data.py
 6. Which department has the lowest attendance?
 7. Does the department with the lowest attendance also have the lowest performance?
 
+---
+
 ## Testing
 
 ```bash
 pytest
 ```
 
-Coverage includes file loading, plan parsing, validation failures, dangerous SQL rejection, cross-file queries, empty results, and malformed LLM output.
+Covers file loading, plan parsing, validation failures, dangerous SQL rejection, cross-file queries, empty results, and malformed LLM output.
+
+---
 
 ## Known limitations
 
-- Best for tidy, spreadsheet-shaped tables; nested JSON and messy merged Excel headers are out of scope.
-- Join inference is name/type based, not a full schema graph.
-- Semantic matching is structural (shared tokens), not a trained entity linker.
-- Very large files are not chunked or sampled for compute—DuckDB still holds the frame in memory.
-- Chart choice depends on the plan; unusual question phrasing can yield a table-only answer.
-- Free OpenRouter models may rate-limit or change availability.
+- Best for tidy spreadsheet-style tables (messy merged Excel headers are out of scope)
+- Join inference is name/type based, not a full schema graph
+- Large files are held in memory (no chunked compute yet)
+- Free OpenRouter models can be slow or rate-limited under load
 
-## Future improvements
+---
 
-- Explicit user confirmation of inferred joins
-- Saved analysis recipes for repeated questions
-- Richer derived metrics (cohorts, period-over-period) still generated in SQL, not by the LLM
-- Optional export of the result table
+## Roadmap — production-grade improvements
+
+These are the next steps to take DataPilot from a solid prototype toward production readiness:
+
+### Reliability & correctness
+- **Paid / dedicated LLM endpoint** (e.g. Groq or a non-free OpenRouter model) for stable latency and fewer rate limits
+- **Plan + SQL replay tests** against golden datasets so regressions are caught in CI
+- **Stronger join confirmation** — show inferred joins and let the user confirm before running
+- **Query cost / row limits** with clear UI feedback when results are truncated
+
+### Security
+- **Per-user / per-session isolation** for uploaded data (no cross-session leakage)
+- **Secrets management** via platform vaults only (never in repo or client logs)
+- **Audit logging** of questions asked and queries executed (without storing raw PII by default)
+- **Stricter SQL allow-list** and sandboxing for any future write-related features
+
+### Scale & performance
+- **File size limits** and streaming / chunked ingest for large CSVs
+- **Optional persistent warehouse** (DuckDB file, MotherDuck, or Postgres) instead of memory-only
+- **Caching** of catalogs and repeated analysis plans for the same schema + question
+- **Async / background jobs** for long-running analyses with progress notifications
+
+### Product experience
+- **Saved questions & recipes** for recurring business reports
+- **Export** answers, tables, and charts (CSV / PNG / PDF)
+- **Multi-turn clarification** that keeps context across follow-ups
+- **Role-based access** (viewer vs analyst) for team deployments
+
+### Observability & ops
+- **Structured metrics**: plan success rate, LLM latency, DuckDB time, error taxonomy
+- **Health checks** and dependency status (LLM provider, storage)
+- **Staging vs production** configs and automated deploy from `main`
+- **Alerting** on spike in failed plans or provider outages
+
+### Data quality
+- **Upload-time profiling** (missing values, duplicate keys, type mismatches) with warnings
+- **Derived metrics library** (period-over-period, cohorts) still generated as SQL, not by the LLM
+- **Semantic layer** (approved metric definitions) so business terms map to one canonical calculation
+
+---
+
+## Repository
+
+GitHub: [https://github.com/lalitha145/AI_DataPilot](https://github.com/lalitha145/AI_DataPilot)

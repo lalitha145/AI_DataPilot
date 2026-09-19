@@ -20,18 +20,10 @@ configure_logging()
 
 from core.llm import LLMClient, LLMError
 from core.planner import MIN_STEP_SECONDS, run_analysis
-from core.schema import AnalysisResult, Catalog, StepLog
+from core.schema import AnalysisResult, Catalog, StepLog, generate_example_questions
 from utils.file_loader import FileLoadError, register_uploads
 
 LOGGER = logging.getLogger("datapilot.app")
-
-EXAMPLE_QUESTIONS = [
-    "Which department has the highest average performance score?",
-    "What is the average attendance by department?",
-    "Compare employees across locations.",
-    "How did average performance change over time?",
-    "Does the department with the lowest attendance also have the lowest performance?",
-]
 
 CUSTOM_CSS = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -496,29 +488,36 @@ def _render_uploads() -> None:
 def _render_examples() -> None:
     if not st.session_state.tables:
         return
+    questions = generate_example_questions(st.session_state.catalog)
+    if not questions:
+        return
     _section("Examples", "click to ask")
-    cols = st.columns(len(EXAMPLE_QUESTIONS[:3]))
-    for col, question in zip(cols, EXAMPLE_QUESTIONS[:3]):
+    first_row, rest = questions[:3], questions[3:]
+    cols = st.columns(len(first_row))
+    for col, question in zip(cols, first_row):
         if col.button(question, use_container_width=True):
             st.session_state.question_input = question
             st.session_state.pending_question = question
             st.rerun()
-    extra = st.columns(2)
-    for col, question in zip(extra, EXAMPLE_QUESTIONS[3:]):
-        if col.button(question, use_container_width=True):
-            st.session_state.question_input = question
-            st.session_state.pending_question = question
-            st.rerun()
+    if rest:
+        extra = st.columns(len(rest))
+        for col, question in zip(extra, rest):
+            if col.button(question, use_container_width=True):
+                st.session_state.question_input = question
+                st.session_state.pending_question = question
+                st.rerun()
 
 
 def _render_ask() -> None:
     _section("Ask", "about your data")
+    examples = generate_example_questions(st.session_state.catalog, limit=1)
+    placeholder = f"e.g. {examples[0]}" if examples else "e.g. What is the average value by category?"
     left, right = st.columns([5, 1])
     with left:
         st.text_input(
             "Question",
             key="question_input",
-            placeholder="e.g. Which department has the highest average performance score?",
+            placeholder=placeholder,
             label_visibility="collapsed",
         )
     with right:

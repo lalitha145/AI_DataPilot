@@ -12,7 +12,14 @@ import pandas as pd
 from core.executor import ExecutionError, SQLSafetyError, connect_and_register, execute_query
 from core.llm import LLMClient, LLMError
 from core.query_builder import SQLBuildError, build_sql
-from core.schema import AnalysisPlan, AnalysisResult, Catalog, Provenance, StepLog
+from core.schema import (
+    AnalysisPlan,
+    AnalysisResult,
+    Catalog,
+    Provenance,
+    StepLog,
+    generate_example_questions,
+)
 from core.validators import (
     PlanValidationError,
     detect_ambiguity,
@@ -113,11 +120,13 @@ def round_numeric(frame: pd.DataFrame, decimals: int = 2) -> pd.DataFrame:
 
 def _greeting_result(catalog: Catalog, question: str) -> AnalysisResult:
     if catalog.tables:
-        message = (
-            "Hello! Ask me a question about your uploaded data — for example, "
-            "\"What is the average performance score by department?\" or "
-            "\"Compare employees across locations.\""
+        examples = generate_example_questions(catalog, limit=2)
+        example_text = (
+            " or ".join(f'"{example}"' for example in examples)
+            if examples
+            else "a totals, average, or trend question"
         )
+        message = f"Hello! Ask me a question about your uploaded data — for example, {example_text}"
     else:
         message = (
             "Hi! Upload a CSV or Excel file first, then ask me about totals, "

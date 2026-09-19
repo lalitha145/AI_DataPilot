@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -172,3 +173,92 @@ class AnalysisResult(BaseModel):
     candidate_columns: list[str] = Field(default_factory=list)
     out_of_scope: bool = False
     steps: list[StepLog] = Field(default_factory=list)
+
+
+FALLBACK_EXAMPLE_QUESTIONS = [
+    "What is the average value by category?",
+    "Which row has the highest value?",
+    "Show me a summary of this data.",
+]
+
+
+def _looks_like_date(dtype: str, name: str) -> bool:
+    dtype_l = dtype.lower()
+    if "datetime" in dtype_l or "date" in dtype_l:
+        return True
+    return bool(re.search(r"date|_dt$|_at$|timestamp", name, re.IGNORECASE))
+
+
+def _looks_like_identifier(name: str) -> bool:
+    """
+    True for columns that are numeric IDs/keys rather than measures — e.g.
+    order_id, customer_id, sku, uuid. Averaging or comparing an ID column
+    produces a nonsensical example question even though it's numeric.
+    """
+    return bool(re.search(r"(^|_)(id|ids|code|sku|uuid|guid|key)$", name, re.IGNORECASE))
+
+
+def generate_example_questions(catalog: Catalog, limit: int = 5) -> list[str]:
+    """
+    Build example questions from whatever schema was actually uploaded,
+    instead of a fixed list tied to one sample dataset. Used by both the
+    UI's example buttons and the greeting message, so a demo on any file —
+    not just the bundled sample data — always shows relevant, real examples.
+
+    Grouping columns are chosen from `distinct_values`, which the loader
+    only populates for genuinely low-cardinality columns (see
+    `_low_cardinality_values` in utils/file_loader.py) — this avoids picking
+    a high-cardinality free-text column like `name` or `email` to group by,
+    which would produce a degenerate "one row per group" example.
+    """
+    if not catalog.tables:
+        return []
+
+    questions: list[str] = []
+    for table in catalog.tables:
+        date_cols = [c.name for c in table.columns if _looks_like_date(c.dtype, c.name)]
+        numeric_cols = [
+            c.name
+            for c in table.columns
+            if c.is_numeric() and not _looks_like_identifier(c.name)
+        ]
+        # Prefer real categorical dimensions (low cardinality); fall back to
+        # any non-numeric, non-date, non-identifier column if none exist.
+        categorical_cols = [c.name for c in table.columns if c.distinct_values] or [
+            c.name
+            for c in table.columns
+            if not c.is_numeric() and c.name not in date_cols and not _looks_like_identifier(c.name)
+        ]
+
+        if numeric_cols and categorical_cols:
+            questions.append(f"What is the average {numeric_cols[0]} by {categorical_cols[0]}?")
+            second_metric = numeric_cols[1] if len(numeric_cols) > 1 else numeric_cols[0]
+            second_cat = categorical_cols[1] if len(categorical_cols) > 1 else categorical_cols[0]
+            questions.append(f"Which {second_cat} has the highest total {second_metric}?")
+        if numeric_cols and date_cols:
+            questions.append(f"How did {numeric_cols[0]} change over time?")
+        if len(numeric_cols) >= 2:
+            questions.append(f"Compare {numeric_cols[0]} and {numeric_cols[1]}.")
+
+        if len(questions) >= limit - 1:
+            break
+
+    if len(catalog.tables) > 1:
+        first_table, second_table = catalog.tables[0], catalog.tables[1]
+        shared_metric = next(
+            (c.name for c in first_table.columns if c.is_numeric() and not _looks_like_identifier(c.name)),
+            None,
+        )
+        if shared_metric:
+            questions.append(
+                f"Combine {first_table.table_name} and {second_table.table_name} "
+                f"to analyze {shared_metric}."
+            )
+
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for question in questions:
+        if question not in seen:
+            seen.add(question)
+            deduped.append(question)
+    return deduped[:limit] or FALLBACK_EXAMPLE_QUESTIONS
