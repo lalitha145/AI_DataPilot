@@ -7,13 +7,16 @@ import logging
 import pandas as pd
 import streamlit as st
 
+# Import helpers before core so Streamlit hot-reload never sees a partial module.
+from utils.helpers import configure_logging, hydrate_streamlit_secrets
+
+configure_logging()
+
 from core.llm import LLMClient
 from core.planner import MIN_STEP_SECONDS, run_analysis
 from core.schema import AnalysisResult, Catalog, StepLog
 from utils.file_loader import FileLoadError, register_uploads
-from utils.helpers import configure_logging, hydrate_streamlit_secrets
 
-configure_logging()
 LOGGER = logging.getLogger("datapilot.app")
 
 EXAMPLE_QUESTIONS = [
