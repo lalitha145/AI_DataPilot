@@ -133,7 +133,9 @@ class LLMClient:
         if not self.api_key:
             raise LLMError(
                 "Missing OPENROUTER_API_KEY",
-                "The AI service is not configured. Set OPENROUTER_API_KEY and try again.",
+                "The AI service is not configured. On Streamlit Cloud, open "
+                "Manage app → Settings → Secrets and set OPENROUTER_API_KEY "
+                '(TOML: OPENROUTER_API_KEY = "your-key"). Locally, set it in .env.',
             )
         if self._client is None:
             self._client = OpenAI(

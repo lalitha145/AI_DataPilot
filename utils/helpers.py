@@ -30,37 +30,61 @@ def get_env(name: str, default: str | None = None) -> str | None:
     return stripped or default
 
 
+def _flatten_mapping(data: dict, out: dict[str, str] | None = None) -> dict[str, str]:
+    """Flatten nested secret tables into a single key→value map."""
+    if out is None:
+        out = {}
+    for key, value in data.items():
+        name = str(key)
+        if isinstance(value, dict):
+            # Prefer nested leaf keys at top level too (e.g. [openrouter] api_key)
+            _flatten_mapping(value, out)
+            continue
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            out[name] = text
+    return out
+
+
 def _secret_value(name: str) -> str | None:
-    """Best-effort read of a flat Streamlit secret."""
+    """Best-effort read of a Streamlit secret (flat or nested)."""
     try:
         import streamlit as st
-
-        secrets = st.secrets
     except Exception:
         return None
 
+    # 1) Direct lookup — official Cloud path
     try:
-        raw = secrets[name]
+        raw = st.secrets[name]
+        if raw is not None and str(raw).strip():
+            return str(raw).strip()
     except Exception:
-        raw = None
-    if raw is not None and str(raw).strip():
-        return str(raw)
+        pass
 
-    # Support nested tables like [openrouter] OPENROUTER_API_KEY = "..."
+    # 2) Attribute-style access
     try:
-        for item in secrets.values():
-            if isinstance(item, dict) and name in item:
-                nested = item[name]
-                if nested is not None and str(nested).strip():
-                    return str(nested)
-            try:
-                nested = item[name]  # type: ignore[index]
-                if nested is not None and str(nested).strip():
-                    return str(nested)
-            except Exception:
-                continue
+        raw = getattr(st.secrets, name)
+        if raw is not None and str(raw).strip():
+            return str(raw).strip()
     except Exception:
-        return None
+        pass
+
+    # 3) Flatten to_dict() so nested TOML tables still work
+    try:
+        if hasattr(st.secrets, "to_dict"):
+            flat = _flatten_mapping(st.secrets.to_dict())
+        else:
+            flat = _flatten_mapping(dict(st.secrets))  # type: ignore[arg-type]
+        if name in flat:
+            return flat[name]
+        lowered = name.lower()
+        for key, value in flat.items():
+            if key.lower() == lowered:
+                return value
+    except Exception as exc:
+        LOGGER.debug("st.secrets flatten failed for %s: %s", name, exc)
     return None
 
 
@@ -76,11 +100,34 @@ def hydrate_streamlit_secrets() -> None:
         "AI_NARRATION",
     )
     for key in keys:
-        if os.getenv(key):
+        existing = os.getenv(key)
+        if existing and existing.strip():
             continue
         value = _secret_value(key)
         if value:
             os.environ[key] = value
+
+
+def _log_missing_api_key() -> None:
+    """Log secret key *names* only — never values — to debug Cloud misconfig."""
+    try:
+        import streamlit as st
+
+        if hasattr(st.secrets, "to_dict"):
+            names = sorted(_flatten_mapping(st.secrets.to_dict()).keys())
+        else:
+            names = sorted(str(k) for k in st.secrets.keys())  # type: ignore[attr-defined]
+        LOGGER.warning(
+            "OPENROUTER_API_KEY not found. Secret keys available: %s | env set=%s",
+            names or "(none)",
+            bool(os.getenv("OPENROUTER_API_KEY")),
+        )
+    except Exception as exc:
+        LOGGER.warning(
+            "OPENROUTER_API_KEY not found; unable to list st.secrets (%s). env set=%s",
+            exc,
+            bool(os.getenv("OPENROUTER_API_KEY")),
+        )
 
 
 def get_model() -> str:
@@ -92,7 +139,11 @@ def get_openrouter_base_url() -> str:
 
 
 def get_openrouter_api_key() -> str | None:
-    return get_env("OPENROUTER_API_KEY")
+    hydrate_streamlit_secrets()
+    key = get_env("OPENROUTER_API_KEY")
+    if not key:
+        _log_missing_api_key()
+    return key
 
 
 def get_max_result_rows() -> int:

@@ -8,11 +8,17 @@ import pandas as pd
 import streamlit as st
 
 # Import helpers before core so Streamlit hot-reload never sees a partial module.
-from utils.helpers import configure_logging, hydrate_streamlit_secrets
+from utils.helpers import (
+    configure_logging,
+    get_model,
+    get_openrouter_api_key,
+    get_openrouter_base_url,
+    hydrate_streamlit_secrets,
+)
 
 configure_logging()
 
-from core.llm import LLMClient
+from core.llm import LLMClient, LLMError
 from core.planner import MIN_STEP_SECONDS, run_analysis
 from core.schema import AnalysisResult, Catalog, StepLog
 from utils.file_loader import FileLoadError, register_uploads
@@ -299,10 +305,14 @@ CUSTOM_CSS = """
 """
 
 
-@st.cache_resource(show_spinner=False)
 def _llm_client() -> LLMClient:
-    """One client per session so each question reuses the open connection."""
-    return LLMClient()
+    """Build a fresh client each time so Cloud secrets are always re-read."""
+    hydrate_streamlit_secrets()
+    return LLMClient(
+        api_key=get_openrouter_api_key(),
+        model=get_model(),
+        base_url=get_openrouter_base_url(),
+    )
 
 
 def _init_state() -> None:
@@ -393,6 +403,15 @@ def _run_question(question: str) -> None:
                 on_step=on_step,
                 on_step_start=on_step_start,
             )
+        except LLMError as exc:
+            LOGGER.warning("LLM error during analysis: %s", exc)
+            result = AnalysisResult(
+                question=question,
+                explanation="",
+                error=exc.user_message,
+            )
+            frame, chart = None, None
+            status.update(label="Analysis failed", state="error", expanded=True)
         except Exception:
             LOGGER.exception("Analysis crashed")
             result = AnalysisResult(
