@@ -11,7 +11,7 @@ from core.llm import LLMClient
 from core.planner import MIN_STEP_SECONDS, run_analysis
 from core.schema import AnalysisResult, Catalog, StepLog
 from utils.file_loader import FileLoadError, register_uploads
-from utils.helpers import configure_logging
+from utils.helpers import configure_logging, hydrate_streamlit_secrets
 
 configure_logging()
 LOGGER = logging.getLogger("datapilot.app")
@@ -380,25 +380,35 @@ def _run_question(question: str) -> None:
             done_lines.append(_step_line(step))
             live.markdown(_render_live_steps(done_lines), unsafe_allow_html=True)
 
-        result, frame, chart = run_analysis(
-            question=question,
-            catalog=st.session_state.catalog,
-            tables=st.session_state.tables,
-            llm=_llm_client(),
-            clarification=st.session_state.clarification,
-            on_step=on_step,
-            on_step_start=on_step_start,
-        )
-
-        total = sum(max(step.seconds, MIN_STEP_SECONDS) for step in result.steps)
-        if result.error:
+        try:
+            result, frame, chart = run_analysis(
+                question=question,
+                catalog=st.session_state.catalog,
+                tables=st.session_state.tables,
+                llm=_llm_client(),
+                clarification=st.session_state.clarification,
+                on_step=on_step,
+                on_step_start=on_step_start,
+            )
+        except Exception:
+            LOGGER.exception("Analysis crashed")
+            result = AnalysisResult(
+                question=question,
+                explanation="",
+                error="Something went wrong while analyzing. Please try again.",
+            )
+            frame, chart = None, None
             status.update(label="Analysis failed", state="error", expanded=True)
         else:
-            status.update(
-                label=f"Done — {len(result.steps)} steps · {total:.1f}s",
-                state="complete",
-                expanded=True,
-            )
+            total = sum(max(step.seconds, MIN_STEP_SECONDS) for step in result.steps)
+            if result.error:
+                status.update(label="Analysis failed", state="error", expanded=True)
+            else:
+                status.update(
+                    label=f"Done — {len(result.steps)} steps · {total:.1f}s",
+                    state="complete",
+                    expanded=True,
+                )
 
     st.session_state.result = result
     st.session_state.result_frame = frame
@@ -597,6 +607,7 @@ def _render_result() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="DataPilot", page_icon="📊", layout="centered")
+    hydrate_streamlit_secrets()
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     _init_state()
     _render_header()

@@ -122,6 +122,14 @@ class LLMClient:
         self._client: OpenAI | None = None
 
     def _get_client(self) -> OpenAI:
+        # Re-read at call time so Streamlit Cloud secrets / reboots pick up the key
+        # even if this client was cache_resource'd before secrets were available.
+        if not self.api_key:
+            self.api_key = get_openrouter_api_key()
+        if not self.model:
+            self.model = get_model()
+        if not self.base_url:
+            self.base_url = get_openrouter_base_url()
         if not self.api_key:
             raise LLMError(
                 "Missing OPENROUTER_API_KEY",
@@ -134,7 +142,7 @@ class LLMClient:
                 timeout=get_llm_timeout(),
                 max_retries=0,
                 default_headers={
-                    "HTTP-Referer": "http://localhost:8501",
+                    "HTTP-Referer": "https://datapilot.streamlit.app",
                     "X-Title": "DataPilot",
                 },
             )

@@ -22,18 +22,65 @@ DEFAULT_TIMEOUT = 60
 def get_env(name: str, default: str | None = None) -> str | None:
     """Read from OS env first, then Streamlit secrets (Cloud deploy)."""
     value = os.getenv(name)
-    if not value:
-        try:
-            import streamlit as st
-
-            if hasattr(st, "secrets") and name in st.secrets:
-                value = st.secrets[name]
-        except Exception:
-            value = None
+    if value is None or not str(value).strip():
+        value = _secret_value(name)
     if value is None:
         return default
     stripped = str(value).strip()
     return stripped or default
+
+
+def _secret_value(name: str) -> str | None:
+    """Best-effort read of a flat Streamlit secret."""
+    try:
+        import streamlit as st
+
+        secrets = st.secrets
+    except Exception:
+        return None
+
+    try:
+        raw = secrets[name]
+    except Exception:
+        raw = None
+    if raw is not None and str(raw).strip():
+        return str(raw)
+
+    # Support nested tables like [openrouter] OPENROUTER_API_KEY = "..."
+    try:
+        for item in secrets.values():
+            if isinstance(item, dict) and name in item:
+                nested = item[name]
+                if nested is not None and str(nested).strip():
+                    return str(nested)
+            try:
+                nested = item[name]  # type: ignore[index]
+                if nested is not None and str(nested).strip():
+                    return str(nested)
+            except Exception:
+                continue
+    except Exception:
+        return None
+    return None
+
+
+def hydrate_streamlit_secrets() -> None:
+    """Copy Streamlit secrets into os.environ so the rest of the app can use getenv."""
+    keys = (
+        "OPENROUTER_API_KEY",
+        "MODEL",
+        "OPENROUTER_BASE_URL",
+        "APP_TITLE",
+        "MAX_RESULT_ROWS",
+        "LLM_TIMEOUT_SECONDS",
+        "AI_NARRATION",
+    )
+    for key in keys:
+        if os.getenv(key):
+            continue
+        value = _secret_value(key)
+        if value:
+            os.environ[key] = value
 
 
 def get_model() -> str:
