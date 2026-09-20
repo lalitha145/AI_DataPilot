@@ -157,44 +157,45 @@ Covers file loading, plan parsing, validation failures, dangerous SQL rejection,
 
 ---
 
-## Roadmap — production-grade improvements
+## Future improvements
 
-These are the next steps to take DataPilot from a solid prototype toward production readiness:
+DataPilot already answers questions from uploaded spreadsheets. These are the next steps to make it faster, safer, and easier for everyone — written in plain English.
 
-### Reliability & correctness
-- **Paid / dedicated LLM endpoint** (e.g. Groq or a non-free OpenRouter model) for stable latency and fewer rate limits
-- **Plan + SQL replay tests** against golden datasets so regressions are caught in CI
-- **Stronger join confirmation** — show inferred joins and let the user confirm before running
-- **Query cost / row limits** with clear UI feedback when results are truncated
+### Make answers more trustworthy
+- Use a paid AI model so the app is less likely to slow down or fail when many people use it
+- Add extra tests that replay the same questions on sample files, so a code change cannot silently give a wrong number
+- When two files are combined, show how they were joined and let the user confirm before running
+- If a result is cut short (too many rows), tell the user clearly instead of hiding it
 
-### Security
-- **Per-user / per-session isolation** for uploaded data (no cross-session leakage)
-- **Secrets management** via platform vaults only (never in repo or client logs)
-- **Audit logging** of questions asked and queries executed (without storing raw PII by default)
-- **Stricter SQL allow-list** and sandboxing for any future write-related features
+### Keep data safe
+- Keep each user's uploaded files private to their own session
+- Store API keys only in the host's secret settings — never in the code or in logs
+- Keep a simple activity log of questions asked, without saving personal details by default
+- Keep queries read-only (view data only; never change or delete it)
 
-### Scale & performance
-- **File size limits** and streaming / chunked ingest for large CSVs
-- **Optional persistent warehouse** (DuckDB file, MotherDuck, or Postgres) instead of memory-only
-- **Caching** of catalogs and repeated analysis plans for the same schema + question
-- **Async / background jobs** for long-running analyses with progress notifications
+### Handle bigger files
+- Set a file-size limit and show a friendly message when a file is too large
+- Load large CSVs in parts instead of holding everything in memory at once
+- Optionally save data in a database so it does not disappear when the session ends
+- Remember recent questions for the same files so repeat asks are faster
+- For slow questions, keep working in the background and show progress
 
-### Product experience
-- **Saved questions & recipes** for recurring business reports
-- **Export** answers, tables, and charts (CSV / PNG / PDF)
-- **Multi-turn clarification** that keeps context across follow-ups
-- **Role-based access** (viewer vs analyst) for team deployments
+### Make the product nicer to use
+- Let people save favorite questions and reuse them later
+- Export the answer, table, and chart (CSV, image, or PDF)
+- Remember the last question so follow-ups like “now by location” work
+- For teams: simple roles such as “can view” vs “can analyze”
 
-### Observability & ops
-- **Structured metrics**: plan success rate, LLM latency, DuckDB time, error taxonomy
-- **Health checks** and dependency status (LLM provider, storage)
-- **Staging vs production** configs and automated deploy from `main`
-- **Alerting** on spike in failed plans or provider outages
+### Watch how the app is doing
+- Track how often answers succeed, how long they take, and why they fail
+- Show whether the AI service is up
+- Test changes on a staging copy before updating the live app
+- Alert the team if many analyses start failing
 
-### Data quality
-- **Upload-time profiling** (missing values, duplicate keys, type mismatches) with warnings
-- **Derived metrics library** (period-over-period, cohorts) still generated as SQL, not by the LLM
-- **Semantic layer** (approved metric definitions) so business terms map to one canonical calculation
+### Improve data quality
+- On upload, warn about missing values, duplicate IDs, or mixed column types
+- Support common business calcs (this month vs last month) in code — not by guessing numbers
+- Let teams define official meanings for terms like “revenue” or “attendance rate” so everyone gets the same calculation
 
 ---
 
