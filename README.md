@@ -4,7 +4,7 @@
 
 Live demo: **[https://ai-datapilot.streamlit.app/](https://ai-datapilot.streamlit.app/)**
 
-DataPilot lets you upload CSV/Excel files and ask analytical questions in plain English. Answers are **computed from your data with DuckDB** — the LLM only plans the query, it does not invent numbers.
+DataPilot lets you upload CSV/Excel files and ask analytical questions in plain English. Answers are **computed from your data with DuckDB** — the LLM only plans the query, it does not invent answers.
 
 ---
 
@@ -35,7 +35,7 @@ DataPilot lets you upload CSV/Excel files and ask analytical questions in plain 
 ## Key features
 
 - Multi-file CSV / Excel upload in one session
-- Schema catalog for the model (types, samples) — full data stays local
+- Schema catalog for the model — full data stays local
 - Structured planning with Pydantic (`AnalysisPlan`)
 - Deterministic SQL + read-only DuckDB execution
 - Cross-file joins when a question spans datasets
@@ -94,7 +94,9 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+
 ```
+
 
 ### Environment variables
 
@@ -110,7 +112,7 @@ LLM_TIMEOUT_SECONDS=60
 AI_NARRATION=true
 ```
 
-Never commit `.env`. On Streamlit Cloud, set the same keys under **Manage app → Settings → Secrets** (TOML format).
+
 
 ### Run
 
@@ -159,13 +161,11 @@ Covers file loading, plan parsing, validation failures, dangerous SQL rejection,
 
 ## Future improvements
 
-DataPilot already answers questions from uploaded spreadsheets. These are the next steps to make it faster, safer, and easier for everyone — written in plain English.
+DataPilot already answers questions from uploaded spreadsheets. These are the next steps to make it faster, safer, and easier for everyone .
 
 ### Make answers more trustworthy
 - Use a paid AI model so the app is less likely to slow down or fail when many people use it
-- Add extra tests that replay the same questions on sample files, so a code change cannot silently give a wrong number
-- When two files are combined, show how they were joined and let the user confirm before running
-- If a result is cut short (too many rows), tell the user clearly instead of hiding it
+
 
 ### Keep data safe
 - Keep each user's uploaded files private to their own session
@@ -180,21 +180,40 @@ DataPilot already answers questions from uploaded spreadsheets. These are the ne
 - Remember recent questions for the same files so repeat asks are faster
 - For slow questions, keep working in the background and show progress
 
+### Many tables — hybrid search
+
+If the system grows to hundreds or thousands of tables, sending the entire schema to the LLM would increase token usage, latency, and noise.
+
+Instead, introduce a schema retrieval layer:
+
+1. Search the metadata catalog using table and column names.
+2. Use semantic matching for cases where business language differs from database names (for example, "revenue" vs. `fact_sales`).
+3. Send only the most relevant tables and columns to the LLM.
+4. Let the LLM generate the analysis plan or SQL using this focused schema context.
+
+This can be implemented using keyword search combined with embeddings or LLM reranking. A separate vector database is not required; an existing PostgreSQL database with full-text search and `pgvector` can store the schema metadata and embeddings.
+
+Only schema and metadata are indexed — not the underlying data rows.
+
+For production workloads, SQL execution should happen against the organization's analytical database or warehouse (such as PostgreSQL, Snowflake, or BigQuery). DuckDB can continue to handle smaller user-uploaded CSV/Excel files locally, while the warehouse remains the system of record for large datasets.
+
 ### Make the product nicer to use
 - Let people save favorite questions and reuse them later
 - Export the answer, table, and chart (CSV, image, or PDF)
 - Remember the last question so follow-ups like “now by location” work
-- For teams: simple roles such as “can view” vs “can analyze”
 
 ### Watch how the app is doing
 - Track how often answers succeed, how long they take, and why they fail
 - Show whether the AI service is up
-- Test changes on a staging copy before updating the live app
 - Alert the team if many analyses start failing
+
+### Watch the AI — Langfuse
+
+Use Langfuse to trace each run (plan → SQL → explanation): latency, errors, model, cost. Do not store uploaded files or personal data by default. Langfuse is observability only.
 
 ### Improve data quality
 - On upload, warn about missing values, duplicate IDs, or mixed column types
-- Support common business calcs (this month vs last month) in code — not by guessing numbers
+- Support common business calcs (this month vs last month) in code ,not by guessing numbers
 - Let teams define official meanings for terms like “revenue” or “attendance rate” so everyone gets the same calculation
 
 ---
