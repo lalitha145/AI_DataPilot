@@ -4,16 +4,19 @@
 
 Live demo: **[https://ai-datapilot.streamlit.app/](https://ai-datapilot.streamlit.app/)**
 
+Demo video: **[Demo_video.mp4](Demo_video.mp4)** — a short walkthrough of upload, ask, and insights.
+
 DataPilot lets you upload CSV/Excel files and ask analytical questions in plain English. Answers are **computed from your data with DuckDB** — the LLM only plans the query, it does not invent answers.
 
 ---
 
 ## Try it now
 
-1. Open the live app: [https://ai-datapilot.streamlit.app/](https://ai-datapilot.streamlit.app/)
-2. Upload one or more CSV / Excel files (or use the sample files from `sample_data/`)
-3. Ask a question or click an example
-4. Review the answer, chart (if useful), result table, and analysis details
+1. Watch the demo video: [Demo_video.mp4](Demo_video.mp4)
+2. Open the live app: [https://ai-datapilot.streamlit.app/](https://ai-datapilot.streamlit.app/)
+3. Upload one or more CSV / Excel files (or use the sample files from `sample_data/`)
+4. Ask a question or click an example
+5. Review the answer, chart (if useful), result table, and analysis details
 
 ---
 
